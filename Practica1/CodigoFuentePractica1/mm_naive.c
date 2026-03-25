@@ -13,6 +13,8 @@ typedef enum
 
 // Multiplica dos matrices, A y B, de tamaño nxn y almacena el resultado en la matriz C
 void matmul(double *A, double *B, double *C, int n);
+// Multiplica dos matrices, A y B, de tamaño nxn y almacena el resultado en la matriz C, pero accediendo a las columnas de B
+void matmulcol(double *A, double *B, double *C, int N);
 // Valida el resultado. 0 si ok, sino -1
 int validar(int n, double *c, char *fileR);
 // Lee una matriz desde archivo de a datos consecutivos y la almacena en el mismo orden en memoria principal
@@ -45,9 +47,23 @@ int main(int argc, char *argv[])
 	double *A = (double *)malloc(sizeof(double) * N * N);
 	double *B = (double *)malloc(sizeof(double) * N * N);
 	double *C = (double *)malloc(sizeof(double) * N * N);
+	/*
+		// Lee las matrices a y b de archivos. Se almacenan en memoria linealmente tal como se encuentran en archivo
+		printf("Leyendo matrices...\n");
+		A = leerMatriz(A, N, fileA); // Asumimos ordenada en archivo por filas, en memoria la utilizamos por filas
+		B = leerMatriz(B, N, fileB); // Asumimos ordenada en archivo por filas, en memoria la utilizamos por filas
 
-	// Lee las matrices a y b de archivos. Se almacenan en memoria linealmente tal como se encuentran en archivo
-	printf("Leyendo matrices...\n");
+		// Realiza la multiplicacion
+		printf("Multiplicando matrices...\n");
+		double timetick = dwalltime();
+		// Realiza la multiplicacion
+		matmul(A, B, C, N);
+		double workTime = dwalltime() - timetick;
+
+		printf("mm_naive n = %d Tiempo en segundos %f\n", N, workTime);
+		 */
+	/*-----------------------------------------------------------------------*/
+	printf("Leyendo matrices, una fila y la otra columna...\n");
 	A = leerMatriz(A, N, fileA); // Asumimos ordenada en archivo por filas, en memoria la utilizamos por filas
 	B = leerMatriz(B, N, fileB); // Asumimos ordenada en archivo por filas, en memoria la utilizamos por filas
 
@@ -55,7 +71,7 @@ int main(int argc, char *argv[])
 	printf("Multiplicando matrices...\n");
 	double timetick = dwalltime();
 	// Realiza la multiplicacion
-	matmul(A, B, C, N);
+	matmulcol(A, B, C, N);
 	double workTime = dwalltime() - timetick;
 
 	printf("mm_naive n = %d Tiempo en segundos %f\n", N, workTime);
@@ -92,6 +108,25 @@ void matmul(double *A, double *B, double *C, int N)
 			for (k = 0; k < N; k++)
 			{
 				C[i * N + j] = C[i * N + j] + A[i * N + k] * B[k * N + j];
+				// setValor(C, i, j, ORDENXFILAS, getValor(C, i, j, ORDENXFILAS, N) + getValor(A, i, k, ORDENXFILAS, N) * getValor(B, k, j, ORDENXFILAS, N), N);
+			}
+		}
+	}
+}
+
+void matmulcol(double *A, double *B, double *C, int N)
+{
+	int i, j, k;
+
+	for (i = 0; i < N; i++)
+	{
+		for (j = 0; j < N; j++)
+		{
+			// setValor(C, i, j, ORDENXFILAS, 0, N);
+			C[i * N + j] = 0;
+			for (k = 0; k < N; k++)
+			{
+				C[i * N + j] = C[i * N + j] + A[i * N + k] * B[k + N * j];
 				// setValor(C, i, j, ORDENXFILAS, getValor(C, i, j, ORDENXFILAS, N) + getValor(A, i, k, ORDENXFILAS, N) * getValor(B, k, j, ORDENXFILAS, N), N);
 			}
 		}
