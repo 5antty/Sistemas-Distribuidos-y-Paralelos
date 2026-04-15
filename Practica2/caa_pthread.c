@@ -1,22 +1,11 @@
-#include <stdio.h>
+#include <pthread.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include <unistd.h>
 #include <stdint.h>
 #include <string.h>
 #include <sys/time.h>
-#include <pthread.h>
-
-typedef enum
-{
-    ORDENXFILAS,
-    ORDENXCOLUMNAS
-} TOrden;
-
-typedef struct
-{
-    uint8_t ini;
-    uint8_t fin;
-} dataxThread;
+#include <bits/pthreadtypes.h>
 
 #define NUM_THREADS 4
 
@@ -28,16 +17,23 @@ double *leerMatriz(double *m, int n, char *fullpath);
 double dwalltime(void);
 
 // MULTIPLICACION POR HILOS
-void *multixthread(void *arg);
+void multixthread(int ini, int fin);
+
+// REORDENAMIENTO DE MATRIZ
+void reordenarMatriz(int ini, int fin);
+
+void *func(void *arg);
 
 // VARIABLES COMPARTIDAS ENTRE HILOS
-double *A, *B, *C;
+
 int N;
+double *A, *C, *Ac;
+pthread_barrier_t barrera;
 
 int main(int argc, char *argv[])
 {
     // Chequeo de parametros
-    if ((argc < 5) || ((N = atoi(argv[1])) <= 0))
+    if ((argc < 3) || ((N = atoi(argv[1])) <= 0))
     {
         printf("\nError en los parametros. Usar: %s N  <ruta y archivo matriz A> <ruta y archivo matriz B> <ruta y archivo matriz resultado> \n", argv[0]);
         exit(1);
@@ -45,33 +41,32 @@ int main(int argc, char *argv[])
 
     // Lee las rutas de los archivos
     char *fileA = argv[2];
-    char *fileB = argv[3];
-    char *fileR = argv[4];
 
     // Aloca memoria para las matrices
     A = (double *)malloc(sizeof(double) * N * N);
-    B = (double *)malloc(sizeof(double) * N * N);
     C = (double *)malloc(sizeof(double) * N * N);
+
+    // Cambio la matriz A para que este ordenada por columnas.
+    Ac = (double *)malloc(sizeof(double) * N * N);
 
     // Lee las matrices a y b de archivos. Se almacenan en memoria linealmente tal como se encuentran en archivo
     printf("Leyendo matrices...\n");
     A = leerMatriz(A, N, fileA); // Asumimos ordenada en archivo por filas, en memoria la utilizamos por filas
-    B = leerMatriz(B, N, fileB); // Asumimos ordenada en archivo por filas, en memoria la utilizamos por filas
 
     // CREACION DE HILOS
     pthread_t threads[NUM_THREADS];
+    pthread_barrier_init(&barrera, NULL, NUM_THREADS);
 
     // Realiza la multiplicacion
     printf("Multiplicando matrices...\n");
     double timetick = dwalltime();
-    // Realiza la multiplicacion
 
     // TAREA A PARALELIZAR
     int ids[NUM_THREADS];
     for (int i = 0; i < NUM_THREADS; i++)
     {
         ids[i] = i;
-        pthread_create(&threads[i], NULL, multixthread, (void *)&ids[i]);
+        pthread_create(&threads[i], NULL, func, (void *)&ids[i]);
     }
 
     // Espera a que todos los hilos terminen
@@ -86,14 +81,7 @@ int main(int argc, char *argv[])
 
     // Liberar memoria antes de validar
     free(A);
-    free(B);
-
-    // Valida
-    printf("Validando...\n");
-    if (validar(N, C, fileR) == 0)
-        printf("Resultado correcto.\n");
-    else
-        printf("Error.\n");
+    free(Ac);
 
     // Libera memoria restante
     free(C);
@@ -101,26 +89,36 @@ int main(int argc, char *argv[])
     return (0);
 }
 
-//---------------------------------------------------------------
-
-void *multixthread(void *arg)
+void *func(void *arg)
 {
-    int *id = (int *)arg;
-    int i, j, k, ini, fin;
-    double suma;
-
     // DIVISION DE TRABAJO ENTRE HILOS
+    int *id = (int *)arg;
+    int ini = *id * (N / NUM_THREADS);
+    int fin = ini + (N / NUM_THREADS);
 
-    ini = *id * (N / NUM_THREADS);
-    fin = ini + (N / NUM_THREADS);
-    /*
-    MUCHO MUY IMPORTANTE: hacer distribucion de carga en base al id arregla el mal
-    funcionamiento si la realizo en el programa principal, ya que el orden de
-    ejecucion de los hilos no es garantizado, y puede ser que el hilo 0 ejecute
-    primero y luego el hilo 1, o al reves, lo que genera un resultado incorrecto.
-    Al hacer la distribucion de carga en base al id, cada hilo sabe exactamente que
-    parte del trabajo le corresponde, independientemente del orden de ejecucion de los hilos.
-    */
+    reordenarMatriz(ini, fin);
+
+    pthread_barrier_wait(&barrera);
+
+    multixthread(ini, fin);
+}
+
+void reordenarMatriz(int ini, int fin)
+{
+    int i, j;
+    for (i = ini; i < fin; i++)
+    {
+        for (j = 0; j < N; j++)
+        {
+            Ac[i + j * N] = A[i * N + j];
+        }
+    }
+}
+
+void multixthread(int ini, int fin)
+{
+    int i, j, k;
+    double suma;
 
     for (i = ini; i < fin; i++)
     {
@@ -129,7 +127,7 @@ void *multixthread(void *arg)
             suma = 0;
             for (k = 0; k < N; k++)
             {
-                suma += A[i * N + k] * B[k + N * j];
+                suma += A[i * N + k] * Ac[k + N * j];
             }
             C[i * N + j] = suma;
         }

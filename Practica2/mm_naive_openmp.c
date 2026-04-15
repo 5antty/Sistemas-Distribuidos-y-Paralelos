@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <sys/time.h>
-#include <pthread.h>
+#include <omp.h>
 
 typedef enum
 {
@@ -12,14 +12,8 @@ typedef enum
     ORDENXCOLUMNAS
 } TOrden;
 
-typedef struct
-{
-    uint8_t ini;
-    uint8_t fin;
-} dataxThread;
-
-#define NUM_THREADS 4
-
+// Multiplica dos matrices, A y B, de tamaño nxn y almacena el resultado en la matriz C
+void matmul(double *A, double *B, double *C, int n);
 // Valida el resultado. 0 si ok, sino -1
 int validar(int n, double *c, char *fileR);
 // Lee una matriz desde archivo de a datos consecutivos y la almacena en el mismo orden en memoria principal
@@ -29,6 +23,11 @@ double dwalltime(void);
 
 // MULTIPLICACION POR HILOS
 void *multixthread(void *arg);
+
+// Retorna el valor de la matriz en la posicion fila y columna segun el orden que este ordenada
+double getValor(double *matriz, int fila, int columna, int orden, int N);
+// Establece el valor de la matriz en la posicion fila y columna segun el orden que este ordenada
+void setValor(double *matriz, int fila, int columna, int orden, double valor, int N);
 
 // VARIABLES COMPARTIDAS ENTRE HILOS
 double *A, *B, *C;
@@ -56,10 +55,7 @@ int main(int argc, char *argv[])
     // Lee las matrices a y b de archivos. Se almacenan en memoria linealmente tal como se encuentran en archivo
     printf("Leyendo matrices...\n");
     A = leerMatriz(A, N, fileA); // Asumimos ordenada en archivo por filas, en memoria la utilizamos por filas
-    B = leerMatriz(B, N, fileB); // Asumimos ordenada en archivo por filas, en memoria la utilizamos por filas
-
-    // CREACION DE HILOS
-    pthread_t threads[NUM_THREADS];
+    B = leerMatriz(B, N, fileB); // Asumimos ordenada en archivo por columnas, en memoria la utilizamos por filas
 
     // Realiza la multiplicacion
     printf("Multiplicando matrices...\n");
@@ -67,17 +63,18 @@ int main(int argc, char *argv[])
     // Realiza la multiplicacion
 
     // TAREA A PARALELIZAR
-    int ids[NUM_THREADS];
-    for (int i = 0; i < NUM_THREADS; i++)
+    int i, j, k;
+#pragma omp parallel for private(i, j, k) shared(A, B, C, N)
+    for (i = 0; i < N; i++)
     {
-        ids[i] = i;
-        pthread_create(&threads[i], NULL, multixthread, (void *)&ids[i]);
-    }
-
-    // Espera a que todos los hilos terminen
-    for (int i = 0; i < NUM_THREADS; i++)
-    {
-        pthread_join(threads[i], NULL);
+        for (j = 0; j < N; j++)
+        {
+            C[i * N + j] = 0;
+            for (k = 0; k < N; k++)
+            {
+                C[i * N + j] += A[i * N + k] * B[k + N * j];
+            }
+        }
     }
 
     double workTime = dwalltime() - timetick;
@@ -102,39 +99,6 @@ int main(int argc, char *argv[])
 }
 
 //---------------------------------------------------------------
-
-void *multixthread(void *arg)
-{
-    int *id = (int *)arg;
-    int i, j, k, ini, fin;
-    double suma;
-
-    // DIVISION DE TRABAJO ENTRE HILOS
-
-    ini = *id * (N / NUM_THREADS);
-    fin = ini + (N / NUM_THREADS);
-    /*
-    MUCHO MUY IMPORTANTE: hacer distribucion de carga en base al id arregla el mal
-    funcionamiento si la realizo en el programa principal, ya que el orden de
-    ejecucion de los hilos no es garantizado, y puede ser que el hilo 0 ejecute
-    primero y luego el hilo 1, o al reves, lo que genera un resultado incorrecto.
-    Al hacer la distribucion de carga en base al id, cada hilo sabe exactamente que
-    parte del trabajo le corresponde, independientemente del orden de ejecucion de los hilos.
-    */
-
-    for (i = ini; i < fin; i++)
-    {
-        for (j = 0; j < N; j++)
-        {
-            suma = 0;
-            for (k = 0; k < N; k++)
-            {
-                suma += A[i * N + k] * B[k + N * j];
-            }
-            C[i * N + j] = suma;
-        }
-    }
-}
 
 int validar(int n, double *c, char *fileR)
 {
