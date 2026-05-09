@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <sys/time.h>
+#include <math.h>
 
 #define NUM_THREADS 4
 
@@ -14,11 +15,15 @@ double *leerMatriz(double *m, int n, char *fullpath);
 double dwalltime(void);
 
 // Funcion que realiza el proceso root
-void rootProc(int, char *argv[], int nProcs, double *, double *, double *);
+void rootProc(int, char *argv[], int nProcs);
 // Funcion que realiza el proceso worker
-void workersProcs(int, int nProcs, double *, double *, double *);
+void workersProcs(int, int nProcs);
+// Funcion que realiza la trasposicion de las matrices parciales
+void trasponer(double *A, int nPart);
 
-int N;
+void showMatrix(double *A, int n);
+
+int N = 4;
 
 int main(int argc, char *argv[])
 {
@@ -37,11 +42,11 @@ int main(int argc, char *argv[])
 
     if (id == 0)
     {
-        rootProc(id, argv, nProcs, &suma, &min, &max);
+        rootProc(id, argv, nProcs);
     }
     else
     {
-        workersProcs(id, nProcs, &suma, &min, &max);
+        workersProcs(id, nProcs);
     }
     MPI_Finalize();
     return (0);
@@ -49,7 +54,7 @@ int main(int argc, char *argv[])
 
 //---------------------------------------------------------------
 
-void rootProc(int id, char *argv[], int nProcs, double *suma, double *min, double *max)
+void rootProc(int id, char *argv[], int nProcs)
 {
 
     int nPart = N * N / nProcs; // Cantidad de filas que hace cada proceso
@@ -62,9 +67,15 @@ void rootProc(int id, char *argv[], int nProcs, double *suma, double *min, doubl
 
     // Lee las matrices a de archivos.
     printf("Leyendo matriz...\n");
-    A = leerMatriz(A, N, fileA); // Asumimos ordenada en archivo por filas, en memoria la utilizamos por filas
+    // A = leerMatriz(A, N, fileA); // Asumimos ordenada en archivo por filas, en memoria la utilizamos por filas
+
+    double valores_A[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
+    // Copiamos los datos a la memoria que reservaste
+    memcpy(A, valores_A, sizeof(double) * N * N);
+
     // Realiza la multiplicacion
     printf("Obteniendo resultados...\n");
+    showMatrix(A, N * N);
 
     double timetick = dwalltime();
 
@@ -72,15 +83,24 @@ void rootProc(int id, char *argv[], int nProcs, double *suma, double *min, doubl
     MPI_Scatter(A, nPart, MPI_DOUBLE, A, nPart, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 
     // TRASPONER
+    trasponer(A, nPart);
+
+    MPI_Barrier(MPI_COMM_WORLD);
+
+    MPI_Gather(A, nPart, MPI_DOUBLE, A, nPart, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 
     double workTime = dwalltime() - timetick;
     printf("Tiempo en segundos de la ejecucion %f\n", workTime);
+
+    showMatrix(A, N * N);
 
     // Liberar memoria antes de validar
     free(A);
 }
 
-void workersProcs(int id, int nProcs, double *suma, double *min, double *max)
+// HASTA AHORA TRASPONGO EN LAS FILAS, TENGO QUE ARMAR LOS BLOQUES?
+
+void workersProcs(int id, int nProcs)
 {
 
     int nPart = N * N / nProcs; // Carga de trabajo de cada proceso (en este caso filas)
@@ -89,9 +109,34 @@ void workersProcs(int id, int nProcs, double *suma, double *min, double *max)
 
     MPI_Scatter(A, nPart, MPI_DOUBLE, A, nPart, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 
+    printf("Proceso %d recibió la parte de la matriz:\n", id);
+    showMatrix(A, nPart); // Mostrar la parte de la matriz que le corresponde a cada proceso
+
     // TRASPONER
+    trasponer(A, nPart);
+
+    MPI_Barrier(MPI_COMM_WORLD);
+    // Asegurarse de que todos los procesos hayan terminado la trasposición antes de recolectar los resultados
+
+    MPI_Gather(A, nPart, MPI_DOUBLE, A, nPart, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 
     free(A);
+}
+
+void trasponer(double *A, int nPart)
+{
+    double temp;
+    double aux = sqrt(nPart);
+    int aux2 = (int)aux;
+    for (int i = 0; i < aux2; i++)
+    {
+        for (int j = i + 1; j < aux2; j++)
+        {
+            temp = A[i * aux2 + j];
+            A[i * aux2 + j] = A[j * aux2 + i];
+            A[j * aux2 + i] = temp;
+        }
+    }
 }
 
 double *leerMatriz(double *m, int n, char *fullpath)
@@ -122,4 +167,18 @@ double dwalltime(void)
     gettimeofday(&tv, NULL);
     sec = tv.tv_sec + tv.tv_usec / 1000000.0;
     return sec;
+}
+
+void showMatrix(double *A, int n)
+{
+    double aux = sqrt(n);
+    int aux2 = (int)aux;
+    for (int i = 0; i < aux2; i++)
+    {
+        for (int j = 0; j < aux2; j++)
+        {
+            printf("%f ", A[i * aux2 + j]);
+        }
+        printf("\n");
+    }
 }
