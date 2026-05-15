@@ -182,3 +182,5 @@ void showMatrix(double *A, int n)
         printf("\n");
     }
 }
+
+// Hacer scatter de filas y columnas, cada proceso traspone una fila y una columna, inevitablemente va a haber desbalance de carga.
