@@ -3,6 +3,7 @@
 /**************************************************************************/
 #include <stdio.h>
 #include <stdlib.h>
+#include "nreinas_mpi.h"
 
 /* Time in seconds from some point in the past */
 double dwalltime();
@@ -10,9 +11,29 @@ double dwalltime();
 #define MAXSIZE 24
 #define MINSIZE 2
 
+//
+// VARIABLES LOCALES A CADA PROCESO
+//
+
+// SIZE es el tamaño del tablero,
+// y SIZEE es el tamaño del tablero - 1
 int SIZE, SIZEE;
-int BOARD[MAXSIZE], *BOARDE, *BOARD1, *BOARD2;
-int MASK, TOPBIT, SIDEMASK, LASTMASK, ENDBIT;
+// BOARD es el tablero (de mayor tamaño), BOARDE es un puntero
+// al ultimo elemento del tablero segun SIZEE
+int BOARD[MAXSIZE], *BOARDE;
+
+// BOARD1 y BOARD2 son punteros a elementos del
+// tablero que se usan para comparar
+int *BOARD1, *BOARD2;
+// TOPBIT es el bit mas significativo del tablero,
+// que se usa para colocar la reina en la primera fila,
+// y luego ir desplazando ese bit para colocar las reinas
+int TOPBIT;
+// Sirve para ignorar los bits que queden
+// fuera del tamaño del tablero.
+int MASK;
+int SIDEMASK, LASTMASK, ENDBIT;
+// BOUND1 es el limite superior para colocar la primera reina, y BOUND2 el limite inferior
 int BOUND1, BOUND2;
 
 long int COUNT8, COUNT4, COUNT2;
@@ -143,7 +164,7 @@ void Backtrack2(int y, int left, int down, int right)
 /**********************************************/
 /* First queen is in the corner               */
 /**********************************************/
-void Backtrack1(int y, int left, int down, int right)
+void Backtrack1(int y, int left, int down, int right, long int *LCOUNT8)
 {
     int bitmap, bit;
 
@@ -153,7 +174,7 @@ void Backtrack1(int y, int left, int down, int right)
         if (bitmap)
         {
             BOARD[y] = bitmap;
-            COUNT8++;
+            (*LCOUNT8)++;
             // Display();
         }
     }
@@ -181,13 +202,19 @@ void NQueens(void)
     /* Initialize */
     COUNT8 = COUNT4 = COUNT2 = 0;
     SIZEE = SIZE - 1;
+    // BOARDE apunta al ultimo elemento del tablero segun SIZEE
     BOARDE = &BOARD[SIZEE];
+
     TOPBIT = 1 << SIZEE;
+    printf("topbit: %d\n", TOPBIT);
     MASK = (1 << SIZE) - 1;
 
     /* 0:000000001 */
     /* 1:011111100 */
+    // Primera reina en la esquina, entonces el primer bit
+    // (el de la derecha) del tablero se pone en 1, y el resto en 0
     BOARD[0] = 1;
+
     for (BOUND1 = 2; BOUND1 < SIZEE; BOUND1++)
     {
         BOARD[1] = bit = 1 << BOUND1;
@@ -217,16 +244,17 @@ void NQueens(void)
 int main(int argC, char *argV[])
 {
     double tIni, tFin;
-
+    int idProc, nProcs;
     SIZE = atoi(argV[1]);
+    inicializacionMPI(argC, argV, &idProc, &nProcs);
     tIni = dwalltime();
     NQueens();
     tFin = dwalltime();
 
     printf("Número de resultados: %lu -  Tiempo Total: %f segundos \n", TOTAL, tFin - tIni);
+    finalizacionMPI();
     return 0;
 }
-
 #include <sys/time.h>
 
 double dwalltime()
@@ -238,3 +266,24 @@ double dwalltime()
     sec = tv.tv_sec + tv.tv_usec / 1000000.0;
     return sec;
 }
+
+/*
+    Ejecutar en 2 nodos, cada nodo tiene 2 intel xeon
+    cada intel xeon tiene 4 cores
+    Un nodo tiene 8 cores, entonces en total
+    tengo 16 cores para ejecutar el programa
+
+    compilo en frontend y luego ejecuto con sbatch el binario compilado
+
+    EN principio tengo que dividir el trabajo entre los procesos
+    como todos deberian saber el estado del tablero, podria hacer
+    un broadcast del estado del tablero a todos los procesos,
+    y luego cada proceso se encarga de buscar soluciones a partir
+    de ese estado del tablero, y al finalizar cada proceso hace
+    un reduce para sumar la cantidad de soluciones encontradas por cada proceso,
+    y asi obtener el resultado final
+    */
+
+// usar semaforos para controlar el acceso a la variable
+// que cuenta las soluciones encontradas por cada proceso,
+// para evitar condiciones de carrera

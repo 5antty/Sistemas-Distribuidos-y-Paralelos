@@ -3,12 +3,15 @@
 /**************************************************************************/
 #include <stdio.h>
 #include <stdlib.h>
+#include <mpi.h>
 
 /* Time in seconds from some point in the past */
 double dwalltime();
 
 #define MAXSIZE 24
 #define MINSIZE 2
+
+long int GLOBAL_COUNT8 = 0, GLOBAL_COUNT4 = 0, GLOBAL_COUNT2 = 0;
 
 int SIZE, SIZEE;
 int BOARD[MAXSIZE], *BOARDE, *BOARD1, *BOARD2;
@@ -17,6 +20,8 @@ int BOUND1, BOUND2;
 
 long int COUNT8, COUNT4, COUNT2;
 long int TOTAL, UNIQUE;
+
+int rank, size;
 
 /**********************************************/
 /* Display the Board Image                    */
@@ -57,7 +62,7 @@ void Check(void)
         if (own > BOARDE)
         {
             COUNT2++;
-            Display();
+            // Display();
             return;
         }
     }
@@ -78,7 +83,7 @@ void Check(void)
         if (own > BOARDE)
         {
             COUNT4++;
-            Display();
+            // Display();
             return;
         }
     }
@@ -98,7 +103,7 @@ void Check(void)
         }
     }
     COUNT8++;
-    Display();
+    // Display();
 }
 /**********************************************/
 /* First queen is inside                      */
@@ -154,7 +159,7 @@ void Backtrack1(int y, int left, int down, int right)
         {
             BOARD[y] = bitmap;
             COUNT8++;
-            Display();
+            // Display();
         }
     }
     else
@@ -188,44 +193,68 @@ void NQueens(void)
     /* 0:000000001 */
     /* 1:011111100 */
     BOARD[0] = 1;
-    for (BOUND1 = 2; BOUND1 < SIZEE; BOUND1++)
+    for (BOUND1 = 2 + rank; BOUND1 < SIZEE; BOUND1 += size)
     {
         BOARD[1] = bit = 1 << BOUND1;
         Backtrack1(2, (2 | bit) << 1, 1 | bit, bit >> 1);
     }
+    MPI_Reduce(&COUNT8, &GLOBAL_COUNT8, 1, MPI_LONG, MPI_SUM, 0, MPI_COMM_WORLD);
     /* 0:000001110 */
     SIDEMASK = LASTMASK = TOPBIT | 1;
     ENDBIT = TOPBIT >> 1;
-    for (BOUND1 = 1, BOUND2 = SIZE - 2; BOUND1 < BOUND2; BOUND1++, BOUND2--)
+    for (BOUND1 = 1 + rank, BOUND2 = SIZE - 2 - rank;
+         BOUND1 < BOUND2;
+         BOUND1 += size, BOUND2 -= size)
     {
+        // Cada proceso recalcula LASTMASK y ENDBIT para su BOUND1
+        LASTMASK = TOPBIT | 1;
+        ENDBIT = TOPBIT >> 1;
+        for (int j = 0; j < BOUND1 - 1; j++)
+        {
+            LASTMASK |= LASTMASK >> 1 | LASTMASK << 1;
+            ENDBIT >>= 1;
+        }
+
         BOARD1 = &BOARD[BOUND1];
         BOARD2 = &BOARD[BOUND2];
         BOARD[0] = bit = 1 << BOUND1;
         Backtrack2(1, bit << 1, bit, bit >> 1);
-        LASTMASK |= LASTMASK >> 1 | LASTMASK << 1;
-        ENDBIT >>= 1;
     }
-
+    // Un único Reduce al final recoge los contadores de ambos backtracks
+    MPI_Reduce(&COUNT8, &GLOBAL_COUNT8, 1, MPI_LONG, MPI_SUM, 0, MPI_COMM_WORLD);
+    MPI_Reduce(&COUNT4, &GLOBAL_COUNT4, 1, MPI_LONG, MPI_SUM, 0, MPI_COMM_WORLD);
+    MPI_Reduce(&COUNT2, &GLOBAL_COUNT2, 1, MPI_LONG, MPI_SUM, 0, MPI_COMM_WORLD);
     /* Unique and Total Solutions */
-    UNIQUE = COUNT8 + COUNT4 + COUNT2;
-    TOTAL = COUNT8 * 8 + COUNT4 * 4 + COUNT2 * 2;
+    if (rank == 0)
+    {
+        UNIQUE = GLOBAL_COUNT8 + GLOBAL_COUNT4 + GLOBAL_COUNT2;
+        TOTAL = GLOBAL_COUNT8 * 8 + GLOBAL_COUNT4 * 4 + GLOBAL_COUNT2 * 2;
+    }
 }
 
 /**********************************************/
 /* N-Queens Solutions MAIN                    */
 /**********************************************/
-int main(int argC, char *argV[])
+int main(int argc, char *argv[])
 {
     double tIni, tFin;
+    MPI_Init(&argc, &argv);
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &size);
 
-    SIZE = atoi(argV[1]);
+    SIZE = atoi(argv[1]);
     tIni = dwalltime();
     NQueens();
     tFin = dwalltime();
 
-    printf("Número de resultados: %lu -  Tiempo Total: %f segundos \n", TOTAL, tFin - tIni);
+    if (rank == 0)
+    {
+        printf("Número de resultados: %lu -  Tiempo Total: %f segundos \n", TOTAL, tFin - tIni);
+    }
+    MPI_Finalize();
     return 0;
 }
+
 #include <sys/time.h>
 
 double dwalltime()
@@ -237,20 +266,3 @@ double dwalltime()
     sec = tv.tv_sec + tv.tv_usec / 1000000.0;
     return sec;
 }
-
-/*
-    Ejecutar en 2 nodos, cada nodo tiene 2 intel xeon
-    cada intel xeon tiene 4 cores
-    Un nodo tiene 8 cores, entonces en total
-    tengo 16 cores para ejecutar el programa
-
-    compilo en frontend y luego ejecuto con sbatch el binario compilado
-
-    EN principio tengo que dividir el trabajo entre los procesos
-    como todos deberian saber el estado del tablero, podria hacer
-    un broadcast del estado del tablero a todos los procesos,
-    y luego cada proceso se encarga de buscar soluciones a partir
-    de ese estado del tablero, y al finalizar cada proceso hace
-    un reduce para sumar la cantidad de soluciones encontradas por cada proceso,
-    y asi obtener el resultado final
-    */
