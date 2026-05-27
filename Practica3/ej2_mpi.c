@@ -29,7 +29,7 @@ int main(int argc, char *argv[])
     // Chequeo de parametros
     if ((argc < 3) || ((N = atoi(argv[1])) <= 0))
     {
-        printf("\nError en los parametros. Usar: %s N  <ruta y archivo matriz A> <ruta y archivo matriz B> <ruta y archivo matriz resultado> \n", argv[0]);
+        printf("\nError en los parametros. Usar: %s N  <ruta y archivo matriz A>\n", argv[0]);
         exit(1);
     }
 

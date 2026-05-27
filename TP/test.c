@@ -182,7 +182,6 @@ void Backtrack1(int y, int left, int down, int right)
 void NQueens(void)
 {
     int bit, cant;
-
     /* Initialize */
     COUNT8 = COUNT4 = COUNT2 = 0;
     SIZEE = SIZE - 1;
@@ -198,7 +197,7 @@ void NQueens(void)
         BOARD[1] = bit = 1 << BOUND1;
         Backtrack1(2, (2 | bit) << 1, 1 | bit, bit >> 1);
     }
-    MPI_Reduce(&COUNT8, &GLOBAL_COUNT8, 1, MPI_LONG, MPI_SUM, 0, MPI_COMM_WORLD);
+    // MPI_Reduce(&COUNT8, &GLOBAL_COUNT8, 1, MPI_LONG, MPI_SUM, 0, MPI_COMM_WORLD);
     /* 0:000001110 */
     SIDEMASK = LASTMASK = TOPBIT | 1;
     ENDBIT = TOPBIT >> 1;
@@ -243,6 +242,8 @@ int main(int argc, char *argv[])
     MPI_Comm_size(MPI_COMM_WORLD, &size);
 
     SIZE = atoi(argv[1]);
+
+    printf("Proceso %d de %d\n", rank, size);
     tIni = dwalltime();
     NQueens();
     tFin = dwalltime();
