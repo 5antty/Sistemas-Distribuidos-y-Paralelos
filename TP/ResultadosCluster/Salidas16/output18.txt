@@ -1,0 +1,17 @@
+Soluciones totales: 666090624  —  Tiempo: 95.3067 s
+Proceso 0 — Thread 0: tiempo de computo = 94.2973 s
+Proceso 0 — Thread 1: tiempo de computo = 84.6453 s
+Proceso 0 — Thread 2: tiempo de computo = 40.7129 s
+Proceso 0 — Thread 3: tiempo de computo = 8.3963 s
+Proceso 0 — Thread 4: tiempo de computo = 1.7306 s
+Proceso 0 — Thread 5: tiempo de computo = 1.0799 s
+Proceso 0 — Thread 6: tiempo de computo = 0.7992 s
+Proceso 0 — Thread 7: tiempo de computo = 0.7057 s
+Proceso 1 — Thread 0: tiempo de computo = 95.2869 s
+Proceso 1 — Thread 1: tiempo de computo = 64.4588 s
+Proceso 1 — Thread 2: tiempo de computo = 21.4958 s
+Proceso 1 — Thread 3: tiempo de computo = 3.0150 s
+Proceso 1 — Thread 4: tiempo de computo = 1.4446 s
+Proceso 1 — Thread 5: tiempo de computo = 0.9509 s
+Proceso 1 — Thread 6: tiempo de computo = 0.8133 s
+Proceso 1 — Thread 7: tiempo de computo = 0.0000 s

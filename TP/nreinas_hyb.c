@@ -51,6 +51,7 @@ typedef struct
     int *boarde; /* &board[sizee]  */
     int *board1; /* &board[bound1] — sólo BT2 */
     int *board2; /* &board[bound2] — sólo BT2 */
+    double time; /* tiempo de computo del thread (para debug) */
 
     /* --- parámetros de la búsqueda (solo lectura, copiados por comodidad) --- */
     int size, sizee, mask, topbit;
@@ -70,10 +71,12 @@ int NUM_THREADS; /* leído de argv[2] */
 
 // Variables donde se alocan las tareas y los argumentos de los threads,
 // las hago aca para poder alocar y liberarlos fuera del tiempo de computo
+ThreadArgs *args;
+pthread_t *threads;
+int *thread_ids;
+
 Task *tasks_bt1;
 Task *tasks_bt2;
-ThreadArgs *args;
-pthread_t *tids;
 int ntasks_bt1;
 int ntasks_bt2;
 
@@ -82,7 +85,6 @@ int ntasks_bt2;
    Recibe el estado completo por puntero en lugar de usar globales.
    BOUND1 se pasa directo porque es un parámetro de la iteración.
    ================================================================== */
-
 static void
 Backtrack1_t(ThreadArgs *a, int y, int left, int down, int right,
              int bound1)
@@ -242,26 +244,32 @@ static void Backtrack2_t(ThreadArgs *a, int y, int left, int down, int right,
    ================================================================== */
 static void *thread_worker(void *arg)
 {
-    ThreadArgs *a = (ThreadArgs *)arg;
+    // ThreadArgs *a = (ThreadArgs *)arg;
+    int *id = (int *)arg;
+    ThreadArgs *cntxtPrivado = &args[*id];
+
+    double tIni;
 
     /* Inicializar estado privado */
-    a->count8 = a->count4 = a->count2 = 0;
-    a->boarde = &a->board[a->sizee];
+    cntxtPrivado->count8 = cntxtPrivado->count4 = cntxtPrivado->count2 = 0;
+    cntxtPrivado->boarde = &cntxtPrivado->board[cntxtPrivado->sizee];
 
-    int sidemask_base = a->topbit | 1; /* usado en BT2 */
+    int sidemask_base = cntxtPrivado->topbit | 1; /* usado en BT2 */
 
-    for (int i = a->task_start; i < a->task_end; i++)
+    tIni = dwalltime();
+    for (int i = cntxtPrivado->task_start; i < cntxtPrivado->task_end; i++)
     {
-        Task *t = &a->tasks[i];
+        Task *t = &cntxtPrivado->tasks[i];
 
         if (t->type == TASK_BT1)
         {
             /* --- Loop 1: reina en la esquina --- */
+
             int bound1 = t->bound1;
             int bit = 1 << bound1;
-            a->board[0] = 1;
-            a->board[1] = bit;
-            Backtrack1_t(a, 2,
+            cntxtPrivado->board[0] = 1;
+            cntxtPrivado->board[1] = bit;
+            Backtrack1_t(cntxtPrivado, 2,
                          (2 | bit) << 1,
                          1 | bit,
                          bit >> 1,
@@ -275,7 +283,7 @@ static void *thread_worker(void *arg)
 
             /* Calcular lastmask y endbit para este bound1 específico */
             int lastmask = sidemask_base;
-            int endbit = a->topbit >> 1;
+            int endbit = cntxtPrivado->topbit >> 1;
             for (int j = 0; j < bound1 - 1; j++)
             {
                 lastmask |= lastmask >> 1 | lastmask << 1;
@@ -283,17 +291,18 @@ static void *thread_worker(void *arg)
             }
 
             /* board1 y board2 apuntan al tablero PRIVADO del thread */
-            a->board1 = &a->board[bound1];
-            a->board2 = &a->board[bound2];
+            cntxtPrivado->board1 = &cntxtPrivado->board[bound1];
+            cntxtPrivado->board2 = &cntxtPrivado->board[bound2];
 
             int bit = 1 << bound1;
-            a->board[0] = bit;
-            Backtrack2_t(a, 1,
+            cntxtPrivado->board[0] = bit;
+            Backtrack2_t(cntxtPrivado, 1,
                          bit << 1, bit, bit >> 1,
                          bound1, bound2,
                          sidemask_base, lastmask, endbit);
         }
     }
+    cntxtPrivado->time += dwalltime() - tIni;
 
     return NULL;
 }
@@ -351,14 +360,17 @@ void inicializacionEstructuras()
        PASO 3 — Alocar estructuras de threads y asignar estado de solo lectura
        ------------------------------------------------------------------ */
     args = malloc(NUM_THREADS * sizeof(ThreadArgs));
-    tids = malloc(NUM_THREADS * sizeof(pthread_t));
+    threads = malloc(NUM_THREADS * sizeof(pthread_t));
+    thread_ids = malloc(NUM_THREADS * sizeof(int));
 
     for (int t = 0; t < NUM_THREADS; t++)
     {
+        thread_ids[t] = t; /* para identificar al thread en la funcion worker */
         args[t].size = G_SIZE;
         args[t].sizee = sizee;
         args[t].mask = mask;
         args[t].topbit = topbit;
+        args[t].time = 0.0; /* inicializar tiempo de computo del thread */
     }
 }
 void NQueens(void)
@@ -400,14 +412,14 @@ void NQueens(void)
             args[t].task_end = offset + chunk;
             offset += chunk;
 
-            pthread_create(&tids[t], NULL, thread_worker, &args[t]);
+            pthread_create(&threads[t], NULL, thread_worker, &thread_ids[t]);
         }
 
         /* Esperar a todos los threads y acumular contadores */
         long int local_c8 = 0;
         for (int t = 0; t < NUM_THREADS; t++)
         {
-            pthread_join(tids[t], NULL);
+            pthread_join(threads[t], NULL);
             local_c8 += args[t].count8;
         }
 
@@ -433,13 +445,13 @@ void NQueens(void)
             args[t].task_end = offset + chunk;
             offset += chunk;
 
-            pthread_create(&tids[t], NULL, thread_worker, &args[t]);
+            pthread_create(&threads[t], NULL, thread_worker, &thread_ids[t]);
         }
 
         long int local_c8 = 0, local_c4 = 0, local_c2 = 0;
         for (int t = 0; t < NUM_THREADS; t++)
         {
-            pthread_join(tids[t], NULL);
+            pthread_join(threads[t], NULL);
             local_c8 += args[t].count8;
             local_c4 += args[t].count4;
             local_c2 += args[t].count2;
@@ -470,7 +482,8 @@ void liberarEstructuras()
     free(tasks_bt1);
     free(tasks_bt2);
     free(args);
-    free(tids);
+    free(threads);
+    free(thread_ids);
 }
 
 /**********************************************/
@@ -501,7 +514,12 @@ int main(int argc, char *argv[])
     tFin = dwalltime();
 
     if (mpi_rank == 0)
+    {
         printf("Soluciones totales: %ld  —  Tiempo: %.4f s\n", TOTAL, tFin - tIni);
+    }
+
+    for (int i = 0; i < NUM_THREADS; i++)
+        printf("Proceso %d — Thread %d: tiempo de computo = %.4f s\n", mpi_rank, i, args[i].time);
 
     liberarEstructuras();
     MPI_Finalize();

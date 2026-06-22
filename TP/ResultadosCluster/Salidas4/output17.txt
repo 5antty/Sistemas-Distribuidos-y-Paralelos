@@ -1,0 +1,5 @@
+Soluciones totales: 95815104  —  Tiempo: 26.5318 s
+Proceso 0 — Thread 0: tiempo de computo = 26.5303 s
+Proceso 0 — Thread 1: tiempo de computo = 5.4153 s
+Proceso 1 — Thread 0: tiempo de computo = 23.3102 s
+Proceso 1 — Thread 1: tiempo de computo = 2.3701 s

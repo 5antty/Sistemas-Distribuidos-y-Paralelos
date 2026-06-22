@@ -3,7 +3,7 @@
 #SBATCH --exclusive
 #SBATCH --partition=Blade
 #SBATCH --tasks-per-node=1
-#SBATCH -o SalidasHyb16/output.txt
-#SBATCH -e SalidasHyb16/errors.txt
+#SBATCH -o Salidas8/output.txt
+#SBATCH -e Salidas8/errors.txt
 #SBATCH --time=00:10:00 #Tiempo límite (HH:MM:SS)
 mpirun --bind-to none nreinasHyb $1 $2
